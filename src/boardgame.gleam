@@ -3,19 +3,19 @@ import gleam/erlang/process
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
 import gleam/io
-import gleam/iterator
-import gleam/option.{None, Some}
+import gleam/option.{Some}
 import gleam/otp/actor
 import gleam/result
 import gleam/string
+import logic/action
 import mist.{type Connection, type ResponseData}
 
-import logic/board
+import logic/board.{type Game}
 
 pub fn main() {
   // These values are for the Websocket process initialized below - 
   let selector = process.new_selector()
-  let state = Nil
+  let state = board.Game(board.starting_board, board.White)
 
   // let not_found =
   //   response.new(404)
@@ -44,20 +44,121 @@ pub fn main() {
 }
 
 pub type MyMessage {
-  Broadcast(String)
+  Reset
+  GetBoard
+  GetPlayer
+  Move(action.ActionType)
 }
 
-fn handle_ws_message(state, conn, message) {
+fn from_string(s: String) -> Result(MyMessage, String) {
+  case s {
+    "reset" -> Ok(Reset)
+    "get_board" -> Ok(GetBoard)
+    "get_player" -> Ok(GetPlayer)
+    "move=" <> rest -> from_string_move(rest) |> result.map(Move(_))
+    _ -> Error("Unknown message")
+  }
+}
+
+fn from_string_move(s: String) -> Result(action.ActionType, String) {
+  case s {
+    "move=" <> rest ->
+      case string.split(rest, ",") {
+        [color, active, pivot] -> {
+          use color <- result.then(case color {
+            "white" -> Ok(board.White)
+            "black" -> Ok(board.Black)
+            _ -> Error("Invalid color")
+          })
+          use active <- result.then(
+            board.position_from_string(active)
+            |> option.to_result("Invalid move"),
+          )
+          use pivot <- result.then(
+            board.position_from_string(pivot)
+            |> option.to_result("Invalid move"),
+          )
+          Ok(action.Move(color, active, pivot))
+        }
+        _ -> Error("Invalid move")
+      }
+    "place=white" -> Ok(action.Place(board.White))
+    "place=black" -> Ok(action.Place(board.Black))
+    _ -> Error("Unknown move")
+  }
+}
+
+fn handler2(state: Game, conn, message: MyMessage) {
+  case message {
+    Reset -> {
+      let assert Ok(_) = mist.send_text_frame(conn, "resetting;;;")
+      actor.continue(board.Game(board.starting_board, board.White))
+    }
+    GetBoard -> {
+      let assert Ok(_) =
+        mist.send_text_frame(
+          conn,
+          "board=" <> board.to_string(state.board) <> ";;;",
+        )
+      actor.continue(state)
+    }
+    GetPlayer -> {
+      let msg = case state {
+        board.Game(_, player) -> {
+          "player=" <> board.color_to_string(player) <> ";;;"
+        }
+        board.GameWon(_, winner) -> {
+          "winner=" <> board.color_to_string(winner) <> ";;;"
+        }
+      }
+      let assert Ok(_) = mist.send_text_frame(conn, msg)
+      actor.continue(state)
+    }
+    Move(action) -> {
+      let result = action.move(state, action)
+      case result {
+        Ok(new_state) -> {
+          let assert Ok(_) = mist.send_text_frame(conn, "move;;;")
+          let assert Ok(_) =
+            mist.send_text_frame(
+              conn,
+              "board=" <> board.to_string(new_state.board) <> ";;;",
+            )
+          actor.continue(new_state)
+        }
+        Error(err) -> {
+          let assert Ok(_) =
+            mist.send_text_frame(
+              conn,
+              "error=" <> action.action_error_to_string(err) <> ";;;",
+            )
+          actor.continue(state)
+        }
+      }
+    }
+  }
+}
+
+fn handle_ws_message(state: Game, conn, message) {
   case message {
     mist.Text("ping") -> {
       let assert Ok(_) = mist.send_text_frame(conn, "pong")
       actor.continue(state)
     }
-    mist.Text(_) | mist.Binary(_) -> {
+    mist.Text(m) -> {
+      case from_string(m) {
+        Ok(msg) -> handler2(state, conn, msg)
+        Error(err) -> {
+          let assert Ok(_) =
+            mist.send_text_frame(conn, "error=" <> err <> ";;;")
+          actor.continue(state)
+        }
+      }
+    }
+    mist.Custom(_) -> {
       actor.continue(state)
     }
-    mist.Custom(Broadcast(text)) -> {
-      let assert Ok(_) = mist.send_text_frame(conn, text)
+    mist.Binary(_) -> {
       actor.continue(state)
     }
     mist.Closed | mist.Shutdown -> actor.Stop(process.Normal)

@@ -1,4 +1,5 @@
 import gleam/bool
+import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -22,12 +23,46 @@ pub type ActionError {
   NothingCanBePlaced
   PivotAndActiveAreTheSame
   PivotAndActiveAreTooFarApart
+  PivotOrActiveAreEnemy
   MoveTargetIsOccupied
   MoveTargetOffBoard
-  Other
+  WrongTurnPlayer
+  GameAlreadyOver
+}
+
+pub fn action_error_to_string(a: ActionError) {
+  case a {
+    NothingCanBePlaced -> "NothingCanBePlaced"
+    PivotAndActiveAreTheSame -> "PivotAndActiveAreTheSame"
+    PivotAndActiveAreTooFarApart -> "PivotAndActiveAreTooFarApart"
+    MoveTargetIsOccupied -> "MoveTargetIsOccupied"
+    PivotOrActiveAreEnemy -> "PivotOrActiveAreEnemy"
+    MoveTargetOffBoard -> "MoveTargetOffBoard"
+    WrongTurnPlayer -> "WrongTurnPlayer"
+    GameAlreadyOver -> "GameAlreadyOver"
+  }
 }
 
 pub fn move(
+  game: board.Game,
+  action: ActionType,
+) -> Result(board.Game, ActionError) {
+  case game {
+    board.Game(board, player) -> {
+      use <- bool.guard(player != action.player, Error(WrongTurnPlayer))
+
+      use result <- result.map(move_inner(board, action))
+
+      case result {
+        Continue(new_board) -> board.Game(new_board, board.other_player(player))
+        Win(new_board, winner) -> board.GameWon(new_board, winner)
+      }
+    }
+    board.GameWon(_, _) -> Error(GameAlreadyOver)
+  }
+}
+
+fn move_inner(
   board: Board,
   action: ActionType,
 ) -> Result(ActionResult, ActionError) {
@@ -39,6 +74,8 @@ pub fn move(
         active,
         pivot,
       ))
+
+      io.debug(new_board)
 
       suffocation(new_board, action.player, target)
       |> conversion(action.player, target)
@@ -60,20 +97,35 @@ fn move_piece(
   pivot: Position,
 ) -> Result(#(Board, Position), ActionError) {
   use <- bool.guard(active == pivot, Error(PivotAndActiveAreTheSame))
+
+  use <- bool.guard(
+    board.get(board, active) != Some(player),
+    Error(PivotOrActiveAreEnemy),
+  )
+  use <- bool.guard(
+    board.get(board, pivot) != Some(player),
+    Error(PivotOrActiveAreEnemy),
+  )
+
   use diff <- result.then(
     board.get_diff(from: active, to: pivot)
     |> option.to_result(PivotAndActiveAreTooFarApart),
   )
+  io.debug(diff.0)
+  io.debug(diff.1)
   use target <- result.then(
-    board.apply_diff(active, diff)
+    board.apply_diff(pivot, diff)
     |> option.to_result(MoveTargetOffBoard),
   )
+  io.debug(target)
   use _ <- result.then(case board.get(board, target) {
     None -> Ok(Nil)
     Some(_) -> Error(MoveTargetIsOccupied)
   })
 
-  Ok(#(board.set(board, target, Some(player)), target))
+  let board2 = board.set(board, active, None)
+
+  Ok(#(board.set(board2, target, Some(player)), target))
 }
 
 fn place(old_board: Board, player: Color) -> Result(Board, ActionError) {
@@ -123,21 +175,26 @@ fn suffocation(
 }
 
 fn conversion(board: Board, player_that_moved: Color, target: Position) -> Board {
-  let enemy_neighbors =
-    board.get_neighbors(target)
-    |> list.map(fn(pos) {
-      board.get(board, pos)
-      |> fn(m_color) {
-        case m_color {
-          None -> None
-          Some(c) if c == player_that_moved -> None
-          Some(_) -> Some(pos)
-        }
+  let enemy_neighbors_with_friends_beyond =
+    board.get_neighbors_two_out(target)
+    |> list.map(fn(pos2) {
+      let #(pos, beyond_pos) = pos2
+      let m_color_fst = board.get(board, pos)
+      let m_color_snd = board.get(board, beyond_pos)
+
+      case m_color_fst, m_color_snd {
+        Some(color_fst), Some(color_snd)
+          if color_fst != player_that_moved && color_snd == player_that_moved
+        -> Some(pos)
+        _, _ -> None
       }
     })
     |> option.values
 
-  todo as "Implement the conversion function"
+  // change to player_that_moved
+  list.fold(enemy_neighbors_with_friends_beyond, board, fn(board, pos) {
+    board.set(board, pos, Some(player_that_moved))
+  })
 }
 
 /// The winner is whoever can control the center 4 squares

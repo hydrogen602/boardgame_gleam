@@ -1,9 +1,30 @@
 import gleam/bool
 import gleam/option.{type Option, None, Some}
+import gleam/string
+import utils
+
+pub type Game {
+  Game(board: Board, player: Color)
+  GameWon(board: Board, winner: Color)
+}
 
 pub type Color {
   Black
   White
+}
+
+pub fn color_to_string(color: Color) -> String {
+  case color {
+    White -> "White"
+    Black -> "Black"
+  }
+}
+
+pub fn other_player(player: Color) -> Color {
+  case player {
+    White -> Black
+    Black -> White
+  }
 }
 
 pub type Piece =
@@ -98,20 +119,24 @@ pub fn get_neighbors(pos: Position) -> List(Position) {
 pub fn get_neighbors_two_out(pos: Position) -> List(#(Position, Position)) {
   let Position(target_rank, target_file) = pos
   [
-    incr_rank(target_rank)
-      |> option.then(fn(r) { incr_rank(r) |> option.map(fn(r2) { #(r, r2) }) })
+    utils.twice_optional(target_rank, incr_rank)
       |> option.map(fn(r) {
-        #(Position(r, target_file), Position(r, target_file))
+        #(Position(r.0, target_file), Position(r.1, target_file))
       }),
-    decr_rank(target_rank)
-      |> option.map(Position(_, target_file)),
-    incr_file(target_file)
-      |> option.map(Position(target_rank, _)),
-    decr_file(target_file)
-      |> option.map(Position(target_rank, _)),
+    utils.twice_optional(target_rank, decr_rank)
+      |> option.map(fn(r) {
+        #(Position(r.0, target_file), Position(r.1, target_file))
+      }),
+    utils.twice_optional(target_file, incr_file)
+      |> option.map(fn(f) {
+        #(Position(target_rank, f.0), Position(target_rank, f.1))
+      }),
+    utils.twice_optional(target_file, decr_file)
+      |> option.map(fn(f) {
+        #(Position(target_rank, f.0), Position(target_rank, f.1))
+      }),
   ]
-
-  todo
+  |> option.values
 }
 
 pub type Rank {
@@ -300,20 +325,29 @@ pub const starting_board = Board(
 
 pub fn to_string(board: Board) -> String {
   let Board(r0, r1, r2, r3, r4, r5, r6, r7) = board
-  to_string_rank(r0)
+  "  A B C D E F G H\n"
+  <> "8 "
+  <> to_string_rank(r0)
   <> "\n"
+  <> "7 "
   <> to_string_rank(r1)
   <> "\n"
+  <> "6 "
   <> to_string_rank(r2)
   <> "\n"
+  <> "5 "
   <> to_string_rank(r3)
   <> "\n"
+  <> "4 "
   <> to_string_rank(r4)
   <> "\n"
+  <> "3 "
   <> to_string_rank(r5)
   <> "\n"
+  <> "2 "
   <> to_string_rank(r6)
   <> "\n"
+  <> "1 "
   <> to_string_rank(r7)
 }
 
@@ -346,6 +380,45 @@ fn to_string_piece(piece: Piece) -> String {
 
 pub type Position {
   Position(rank: Rank, file: File)
+}
+
+pub fn position_from_string(s: String) -> Option(Position) {
+  case string.to_graphemes(s) {
+    [file, rank] -> {
+      use r <- option.then(rank_from_string(rank))
+      use f <- option.then(file_from_string(file))
+      Some(Position(r, f))
+    }
+    _ -> None
+  }
+}
+
+fn rank_from_string(s: String) -> Option(Rank) {
+  case s {
+    "1" -> Some(One)
+    "2" -> Some(Two)
+    "3" -> Some(Three)
+    "4" -> Some(Four)
+    "5" -> Some(Five)
+    "6" -> Some(Six)
+    "7" -> Some(Seven)
+    "8" -> Some(Eight)
+    _ -> None
+  }
+}
+
+fn file_from_string(s: String) -> Option(File) {
+  case s {
+    "a" -> Some(A)
+    "b" -> Some(B)
+    "c" -> Some(C)
+    "d" -> Some(D)
+    "e" -> Some(E)
+    "f" -> Some(F)
+    "g" -> Some(G)
+    "h" -> Some(H)
+    _ -> None
+  }
 }
 
 pub type RankDiff {
