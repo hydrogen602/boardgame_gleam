@@ -91,24 +91,21 @@ fn from_string_move(s: String) -> Result(action.ActionType, String) {
 fn handler2(state: Game, conn, message: MyMessage) {
   case message {
     Reset -> {
-      let assert Ok(_) = mist.send_text_frame(conn, "resetting;;;")
+      let assert Ok(_) = mist.send_text_frame(conn, "resetting")
       actor.continue(board.Game(board.starting_board, board.White))
     }
     GetBoard -> {
       let assert Ok(_) =
-        mist.send_text_frame(
-          conn,
-          "board=" <> board.to_string(state.board) <> ";;;",
-        )
+        mist.send_text_frame(conn, "board=" <> board.to_string(state.board))
       actor.continue(state)
     }
     GetPlayer -> {
       let msg = case state {
         board.Game(_, player) -> {
-          "player=" <> board.color_to_string(player) <> ";;;"
+          "player=" <> board.color_to_string(player)
         }
         board.GameWon(_, winner) -> {
-          "winner=" <> board.color_to_string(winner) <> ";;;"
+          "winner=" <> board.color_to_string(winner)
         }
       }
       let assert Ok(_) = mist.send_text_frame(conn, msg)
@@ -118,11 +115,11 @@ fn handler2(state: Game, conn, message: MyMessage) {
       let result = action.move(state, action)
       case result {
         Ok(new_state) -> {
-          let assert Ok(_) = mist.send_text_frame(conn, "move;;;")
+          let assert Ok(_) = mist.send_text_frame(conn, "move")
           let assert Ok(_) =
             mist.send_text_frame(
               conn,
-              "board=" <> board.to_string(new_state.board) <> ";;;",
+              "board=" <> board.to_string(new_state.board),
             )
           actor.continue(new_state)
         }
@@ -130,7 +127,7 @@ fn handler2(state: Game, conn, message: MyMessage) {
           let assert Ok(_) =
             mist.send_text_frame(
               conn,
-              "error=" <> action.action_error_to_string(err) <> ";;;",
+              "error=" <> action.action_error_to_string(err),
             )
           actor.continue(state)
         }
@@ -149,8 +146,7 @@ fn handle_ws_message(state: Game, conn, message) {
       case from_string(m) {
         Ok(msg) -> handler2(state, conn, msg)
         Error(err) -> {
-          let assert Ok(_) =
-            mist.send_text_frame(conn, "error=" <> err <> ";;;")
+          let assert Ok(_) = mist.send_text_frame(conn, "error=" <> err)
           actor.continue(state)
         }
       }

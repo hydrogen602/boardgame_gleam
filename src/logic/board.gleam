@@ -325,7 +325,7 @@ pub const starting_board = Board(
 
 pub fn to_string(board: Board) -> String {
   let Board(r0, r1, r2, r3, r4, r5, r6, r7) = board
-  "  A B C D E F G H\n"
+  "_ A B C D E F G H\n"
   <> "8 "
   <> to_string_rank(r0)
   <> "\n"
