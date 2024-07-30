@@ -327,52 +327,56 @@ pub fn to_string(board: Board) -> String {
   let Board(r0, r1, r2, r3, r4, r5, r6, r7) = board
   "_ A B C D E F G H\n"
   <> "8 "
-  <> to_string_rank(r0)
+  <> to_string_rank(r0, False)
   <> "\n"
   <> "7 "
-  <> to_string_rank(r1)
+  <> to_string_rank(r1, False)
   <> "\n"
   <> "6 "
-  <> to_string_rank(r2)
+  <> to_string_rank(r2, False)
   <> "\n"
   <> "5 "
-  <> to_string_rank(r3)
+  <> to_string_rank(r3, True)
   <> "\n"
   <> "4 "
-  <> to_string_rank(r4)
+  <> to_string_rank(r4, True)
   <> "\n"
   <> "3 "
-  <> to_string_rank(r5)
+  <> to_string_rank(r5, False)
   <> "\n"
   <> "2 "
-  <> to_string_rank(r6)
+  <> to_string_rank(r6, False)
   <> "\n"
   <> "1 "
-  <> to_string_rank(r7)
+  <> to_string_rank(r7, False)
 }
 
-fn to_string_rank(rank: RankContent) -> String {
+fn to_string_rank(rank: RankContent, special: Bool) -> String {
   let RankContent(r0, r1, r2, r3, r4, r5, r6, r7) = rank
-  to_string_piece(r0)
+  to_string_piece(r0, False)
   <> " "
-  <> to_string_piece(r1)
+  <> to_string_piece(r1, False)
   <> " "
-  <> to_string_piece(r2)
+  <> to_string_piece(r2, False)
   <> " "
-  <> to_string_piece(r3)
+  <> to_string_piece(r3, special)
   <> " "
-  <> to_string_piece(r4)
+  <> to_string_piece(r4, special)
   <> " "
-  <> to_string_piece(r5)
+  <> to_string_piece(r5, False)
   <> " "
-  <> to_string_piece(r6)
+  <> to_string_piece(r6, False)
   <> " "
-  <> to_string_piece(r7)
+  <> to_string_piece(r7, False)
 }
 
-fn to_string_piece(piece: Piece) -> String {
+fn to_string_piece(piece: Piece, special: Bool) -> String {
   case piece {
-    None -> "·"
+    None ->
+      case special {
+        True -> "+"
+        False -> "·"
+      }
     Some(White) -> "●"
     Some(Black) -> "○"
   }

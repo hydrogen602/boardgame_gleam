@@ -134,10 +134,19 @@ fn place(old_board: Board, player: Color) -> Result(Board, ActionError) {
     Black -> board.black_home
   }
 
-  list.try_fold(home, old_board, fn(board, pos) {
-    board.set_if_empty(board, pos, player) |> option.to_result(Nil)
-  })
-  |> result.map_error(fn(_) { NothingCanBePlaced })
+  let #(new_board, count) =
+    list.fold(home, #(old_board, 0), fn(board_and_count, pos) {
+      let #(board, count) = board_and_count
+      case board.set_if_empty(board, pos, player) {
+        Some(new_board) -> #(new_board, count + 1)
+        None -> board_and_count
+      }
+    })
+
+  case count {
+    0 -> Error(NothingCanBePlaced)
+    _ -> Ok(new_board)
+  }
 }
 
 fn suffocation(

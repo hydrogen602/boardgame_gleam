@@ -8,6 +8,11 @@ import { getWebsocketUrl } from './config';
 
 export type Square = string | null;
 
+interface ISnack {
+  message: string;
+  severity: 'success' | 'danger';
+}
+
 export interface IBoard {
   pieces: (Square | null)[][];
 }
@@ -35,12 +40,34 @@ function App() {
         setActivePlayer(lastMessage.data.slice(7));
       }
       else if (lastMessage.data.startsWith('error=')) {
-        setErrMessage(lastMessage.data.slice(6));
+        setErrMessage({
+          message: lastMessage.data.slice(6),
+          severity: 'danger',
+        });
+      }
+      else if (lastMessage.data.startsWith('winner=')) {
+        setErrMessage({
+          message: `Winner: ${lastMessage.data.slice(7)}`,
+          severity: 'success',
+        });
       }
     }
   }, [lastMessage]);
 
-  const [errMessage, setErrMessage] = useState<string | null>(null);
+  const [errMessage, setErrMessage] = useState<ISnack | null>(null);
+
+
+  const [selectedPiece, setSelectedPiece] = useState<string | null>(null);
+  const clickHandler = (coord: string) => {
+    if (selectedPiece === null) {
+      setSelectedPiece(coord);
+    }
+    else {
+      sendMessage(`move=move=${activePlayer},${selectedPiece},${coord}`.toLowerCase());
+      setSelectedPiece(null);
+      sendMessage('get_player');
+    }
+  }
 
   return (
     <div className="App">
@@ -53,12 +80,13 @@ function App() {
         }}
         onClick={() => setErrMessage(null)}
         open={errMessage !== null}
-        color='danger'
+        color={errMessage?.severity}
+        variant='soft'
         autoHideDuration={10000}
         startDecorator={<ErrorIcon />}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
 
-      >{errMessage}</Snackbar>
+      >{errMessage?.message}</Snackbar>
       <Box sx={{
         padding: '0.5em',
         height: '100vh',
@@ -82,9 +110,10 @@ function App() {
             <Button onClick={() => {
               sendMessage(`move=place=${activePlayer}`.toLowerCase());
             }}>Place pieces</Button>
+            {selectedPiece !== null && <Button onClick={() => setSelectedPiece(null)}>Cancel move from {selectedPiece.toUpperCase()}</Button>}
           </Stack>
         </Box>
-        {readyState === 0 ? <p>Connecting...</p> : board === null ? <p>Loading board...</p> : <Board board={board} />}
+        {readyState === 0 ? <p>Connecting...</p> : board === null ? <p>Loading board...</p> : <Board board={board} clickHandler={clickHandler} />}
       </Box>
     </div>
   );

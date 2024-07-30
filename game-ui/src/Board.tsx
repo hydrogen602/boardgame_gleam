@@ -4,9 +4,10 @@ import { IBoard } from "./App";
 
 
 
-function Board({ board }: { board: IBoard }) {
+function Board({ board, clickHandler }: { board: IBoard, clickHandler: (coord: string) => void }) {
   const rowCount = board.pieces.length;
   const colCount = rowCount === 0 ? 0 : board.pieces[0].length;
+
 
   return (
     <Box sx={{
@@ -32,21 +33,33 @@ function Board({ board }: { board: IBoard }) {
             const squareColor = piece === '●' ? 'white' :
               piece === '○' ? 'black' :
                 piece === '·' ? 'transparent' :
-                  specialColor;
+                  piece === '+' ? 'rgb(255, 194, 0, 0.5)' :
+                    specialColor;
 
             const isSpecial = squareColor === specialColor;
 
-            return (<Box key={`${rowIndex}-${colIndex}`} sx={{
-              backgroundColor: isSpecial ? specialColor : null,
-              width: '1em',
-              height: '1em',
-              border: isSpecial ? '' : '1px solid black',
-              gridColumn: `${colIndex + 1} / span 1`,
-              gridRow: `${rowIndex + 1} / span 1`,
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}>
+            return (<Box key={`${rowIndex}-${colIndex}`}
+              onClick={isSpecial ? undefined : () =>
+                clickHandler(IdxToCoord(rowIndex, colIndex))
+              }
+
+              sx={{
+                backgroundColor: isSpecial ? specialColor : null,
+                width: '1em',
+                height: '1em',
+                border: isSpecial ? '' : '1px solid black',
+                gridColumn: `${colIndex + 1} / span 1`,
+                gridRow: `${rowIndex + 1} / span 1`,
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                '&:hover': {
+                  boxShadow: isSpecial ? null : '0 0 0 10px yellow',
+                },
+                '&:active': {
+                  boxShadow: isSpecial ? null : '0 0 0 10px red',
+                },
+              }}>
               {isSpecial ? <p style={{
                 display: 'inline-block',
                 margin: 0,
@@ -79,3 +92,42 @@ function Board({ board }: { board: IBoard }) {
 }
 
 export default Board;
+
+function IdxToCoord(rowIdx: number, colIdx: number): string {
+  let row: string | null = null;
+  let col: string | null = null;
+
+  if (colIdx === 1) {
+    col = 'A';
+  }
+  else if (colIdx === 2) {
+    col = 'B';
+  }
+  else if (colIdx === 3) {
+    col = 'C';
+  }
+  else if (colIdx === 4) {
+    col = 'D';
+  }
+  else if (colIdx === 5) {
+    col = 'E';
+  }
+  else if (colIdx === 6) {
+    col = 'F';
+  }
+  else if (colIdx === 7) {
+    col = 'G';
+  }
+  else if (colIdx === 8) {
+    col = 'H';
+  }
+
+  if (rowIdx >= 1 && rowIdx <= 8) {
+    row = (8 - rowIdx + 1).toString();
+  }
+
+  if (row === null || col === null) {
+    throw new Error(`Invalid rowIdx or colIdx: ${rowIdx}, ${colIdx}`);
+  }
+  return `${col}${row}`.toLowerCase();
+}
