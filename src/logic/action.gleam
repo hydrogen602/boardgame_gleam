@@ -1,5 +1,4 @@
 import gleam/bool
-import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -46,12 +45,13 @@ pub fn action_error_to_string(a: ActionError) {
 pub fn move(
   game: board.Game,
   action: ActionType,
+  player_color: Color,
 ) -> Result(board.Game, ActionError) {
   case game {
     board.Game(board, player) -> {
       use <- bool.guard(player != action.player, Error(WrongTurnPlayer))
 
-      use result <- result.map(move_inner(board, action))
+      use result <- result.map(move_inner(board, action, player_color))
 
       case result {
         Continue(new_board) -> board.Game(new_board, board.other_player(player))
@@ -65,9 +65,10 @@ pub fn move(
 fn move_inner(
   board: Board,
   action: ActionType,
+  player_color: Color,
 ) -> Result(ActionResult, ActionError) {
   case action {
-    Move(player, active, pivot) -> {
+    Move(player, active, pivot) if player == player_color -> {
       use #(new_board, target) <- result.map(move_piece(
         board,
         player,
@@ -75,12 +76,12 @@ fn move_inner(
         pivot,
       ))
 
-      io.debug(new_board)
-
       suffocation(new_board, action.player, target)
       |> conversion(action.player, target)
     }
-    Place(player) -> place(board, player)
+    Move(_, _, _) -> Error(WrongTurnPlayer)
+    Place(player) if player == player_color -> place(board, player)
+    Place(_) -> Error(WrongTurnPlayer)
   }
   |> result.map(win_check)
 }
@@ -111,13 +112,10 @@ fn move_piece(
     board.get_diff(from: active, to: pivot)
     |> option.to_result(PivotAndActiveAreTooFarApart),
   )
-  io.debug(diff.0)
-  io.debug(diff.1)
   use target <- result.then(
     board.apply_diff(pivot, diff)
     |> option.to_result(MoveTargetOffBoard),
   )
-  io.debug(target)
   use _ <- result.then(case board.get(board, target) {
     None -> Ok(Nil)
     Some(_) -> Error(MoveTargetIsOccupied)

@@ -8,6 +8,8 @@ pub type Game {
   GameWon(board: Board, winner: Color)
 }
 
+pub const starting_game = Game(starting_board, White)
+
 pub type Color {
   Black
   White
