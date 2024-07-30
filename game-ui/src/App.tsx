@@ -28,6 +28,12 @@ function App() {
       sendMessage('get_board');
       sendMessage('get_player');
     }
+    else if (readyState === ReadyState.CLOSED) {
+      setErrMessage({
+        message: 'Connection closed. Please refresh the page.',
+        severity: 'danger',
+      });
+    }
   }, [readyState, sendMessage]);
 
   useEffect(() => {
@@ -65,7 +71,6 @@ function App() {
     else {
       sendMessage(`move=move=${activePlayer},${selectedPiece},${coord}`.toLowerCase());
       setSelectedPiece(null);
-      sendMessage('get_player');
     }
   }
 

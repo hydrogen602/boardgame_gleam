@@ -8,7 +8,7 @@ import gleam/otp/actor
 import gleam/result
 import gleam/string
 import logic/action
-import mist.{type Connection, type ResponseData}
+import mist.{type Connection, type ResponseData, type WebsocketConnection}
 
 import logic/board.{type Game}
 
@@ -88,11 +88,30 @@ fn from_string_move(s: String) -> Result(action.ActionType, String) {
   }
 }
 
+fn broadcast_new_state(conn, new_state: Game) {
+  use _ <- result.then(mist.send_text_frame(
+    conn,
+    "board=" <> board.to_string(new_state.board),
+  ))
+  case new_state {
+    board.GameWon(_, winner) -> {
+      let assert Ok(_) =
+        mist.send_text_frame(conn, "winner=" <> board.color_to_string(winner))
+    }
+    board.Game(_, player) -> {
+      let assert Ok(_) =
+        mist.send_text_frame(conn, "player=" <> board.color_to_string(player))
+    }
+  }
+}
+
 fn handler2(state: Game, conn, message: MyMessage) {
   case message {
     Reset -> {
       let assert Ok(_) = mist.send_text_frame(conn, "resetting")
-      actor.continue(board.Game(board.starting_board, board.White))
+      let new_state = board.Game(board.starting_board, board.White)
+      let assert Ok(_) = broadcast_new_state(conn, new_state)
+      actor.continue(new_state)
     }
     GetBoard -> {
       let assert Ok(_) =
@@ -116,11 +135,7 @@ fn handler2(state: Game, conn, message: MyMessage) {
       case result {
         Ok(new_state) -> {
           let assert Ok(_) = mist.send_text_frame(conn, "move")
-          let assert Ok(_) =
-            mist.send_text_frame(
-              conn,
-              "board=" <> board.to_string(new_state.board),
-            )
+          let assert Ok(_) = broadcast_new_state(conn, new_state)
           actor.continue(new_state)
         }
         Error(err) -> {
@@ -136,7 +151,7 @@ fn handler2(state: Game, conn, message: MyMessage) {
   }
 }
 
-fn handle_ws_message(state: Game, conn, message) {
+fn handle_ws_message(state: Game, conn: WebsocketConnection, message) {
   case message {
     mist.Text("ping") -> {
       let assert Ok(_) = mist.send_text_frame(conn, "pong")
