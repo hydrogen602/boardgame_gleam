@@ -1,7 +1,7 @@
 import { Box, Button, Card, Input, Snackbar, Typography } from "@mui/joy";
 import Game from "./Game";
 import { useLocalStorage } from "./util";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ErrorIcon from '@mui/icons-material/Error';
 import { getApiUrl } from "./config";
 
@@ -20,6 +20,10 @@ function isValidToken(token: string): boolean {
 function App() {
   const [gameToken, setGameToken] = useLocalStorage<string | null>(null, "gameToken");
   const [playerToken, setPlayerToken] = useLocalStorage<string | null>(null, "playerToken");
+
+  useEffect(() => {
+    console.log('gameToken:', gameToken, '\n', 'playerToken:', playerToken);
+  }, [gameToken, playerToken]);
 
   const [errMessage, setErrMessage] = useState<ISnack | null>(null);
 

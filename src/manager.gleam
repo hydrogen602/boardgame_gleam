@@ -16,7 +16,7 @@ import utils
 import logic/board.{type Color, type Game}
 
 pub opaque type TopGamesManagerState {
-  TopGamesManagerState(participants: Dict(GameToken, OneGame))
+  TopGamesManagerState(active_games: Dict(GameToken, OneGame))
 }
 
 pub type TopGamesManagerMessage {
@@ -61,7 +61,7 @@ pub type OneGame {
 }
 
 pub fn new_top_games_manager() -> process.Subject(TopGamesManagerMessage) {
-  let m = TopGamesManagerState(participants: dict.new())
+  let m = TopGamesManagerState(active_games: dict.new())
   let assert Ok(actor) = actor.start(m, handle_message_top_manager)
   actor
 }
@@ -107,7 +107,7 @@ fn handle_message_top_manager(
       use game <- utils.result_actor(
         reply_to,
         state,
-        dict.get(state.participants, game_id)
+        dict.get(state.active_games, game_id)
           |> result.map_error(fn(_) { "Game not found" }),
       )
 
@@ -131,13 +131,13 @@ fn handle_message_top_manager(
         )
 
       // lets delete all games that have been inactive for 12hrs
-      let filtered_participants =
-        dict.filter(state.participants, fn(_, game) {
+      let filtered_games =
+        dict.filter(state.active_games, fn(this_tok, game) {
           let diff = birl.difference(now, game.last_activity)
           let result = duration.blur_to(diff, duration.Hour) < 12
           case result {
-            True ->
-              io.println("deleting game: " <> game_token_to_string(game_id))
+            False ->
+              io.println("deleting game: " <> game_token_to_string(this_tok))
             _ -> Nil
           }
 
@@ -148,8 +148,8 @@ fn handle_message_top_manager(
 
       // there's a tiny chance of collision here, but it's fine for now cause the chance is so low
       let state =
-        TopGamesManagerState(participants: dict.insert(
-          filtered_participants,
+        TopGamesManagerState(active_games: dict.insert(
+          filtered_games,
           game_id,
           game,
         ))
@@ -160,7 +160,7 @@ fn handle_message_top_manager(
       use game <- utils.result_actor(
         reply_to,
         state,
-        dict.get(state.participants, game_id)
+        dict.get(state.active_games, game_id)
           |> result.map_error(fn(_) { "Game not found" }),
       )
 
@@ -180,11 +180,17 @@ fn handle_message_top_manager(
               last_activity: birl.now(),
             )
           let state =
-            TopGamesManagerState(participants: dict.insert(
-              state.participants,
+            TopGamesManagerState(active_games: dict.insert(
+              state.active_games,
               game_id,
               game,
             ))
+          io.println(
+            "player joined game: game_token="
+            <> game_token_to_string(game_id)
+            <> ", player_token="
+            <> player_token_to_string(player_token),
+          )
           actor.send(reply_to, Ok(player_token))
           actor.continue(state)
         }
@@ -194,7 +200,7 @@ fn handle_message_top_manager(
       use game <- utils.result_actor(
         reply_to,
         state,
-        dict.get(state.participants, game_id)
+        dict.get(state.active_games, game_id)
           |> result.map_error(fn(_) { "Game not found" }),
       )
 
@@ -203,7 +209,17 @@ fn handle_message_top_manager(
         state,
         dict.to_list(game.players)
           |> list.find(fn(val) { { val.1 }.1 == player_token })
-          |> result.map_error(fn(_) { "Player not found" })
+          |> result.map_error(fn(_) {
+            io.println(
+              "player not found with player_token="
+              <> player_token_to_string(player_token)
+              <> "\n> existing tokens are:\n\t"
+              <> dict.to_list(game.players)
+              |> list.map(fn(x) { player_token_to_string({ x.1 }.1) })
+              |> string.join("\n\t"),
+            )
+            "Player not found"
+          })
           |> result.map(fn(color_and_player) { color_and_player.0 }),
       )
 
@@ -215,8 +231,8 @@ fn handle_message_top_manager(
         )
 
       let state =
-        TopGamesManagerState(participants: dict.insert(
-          state.participants,
+        TopGamesManagerState(active_games: dict.insert(
+          state.active_games,
           game_id,
           game,
         ))
@@ -227,7 +243,7 @@ fn handle_message_top_manager(
     Disconnect(game_id, player_token) -> {
       use game <- utils.result_actor_no_reply(
         state,
-        dict.get(state.participants, game_id)
+        dict.get(state.active_games, game_id)
           |> result.map_error(fn(_) { "Game not found" }),
       )
 
@@ -235,20 +251,31 @@ fn handle_message_top_manager(
         state,
         dict.to_list(game.players)
           |> list.find(fn(val) { { val.1 }.1 == player_token })
-          |> result.map_error(fn(_) { "Player not found" })
+          |> result.map_error(fn(_) {
+            io.println(
+              "player not found with player_token="
+              <> player_token_to_string(player_token)
+              <> "\n> existing tokens are:\n\t"
+              <> dict.to_list(game.players)
+              |> list.map(fn(x) { player_token_to_string({ x.1 }.1) })
+              |> string.join("\n\t"),
+            )
+            "Player not found"
+          })
           |> result.map(fn(color_and_player) { color_and_player.0 }),
       )
 
+      // remove conn
       let game =
         OneGame(
           board: game.board,
-          players: dict.delete(game.players, color),
+          players: dict.insert(game.players, color, #(None, player_token)),
           last_activity: birl.now(),
         )
 
       let state =
-        TopGamesManagerState(participants: dict.insert(
-          state.participants,
+        TopGamesManagerState(active_games: dict.insert(
+          state.active_games,
           game_id,
           game,
         ))
@@ -258,7 +285,7 @@ fn handle_message_top_manager(
     PlayerMakesMove(msg, game_id, player_token, conn, color) -> {
       use game <- utils.result_actor_no_reply(
         state,
-        dict.get(state.participants, game_id)
+        dict.get(state.active_games, game_id)
           |> result.map_error(fn(_) { "Game not found" }),
       )
 
@@ -289,8 +316,8 @@ fn handle_message_top_manager(
         )
 
       let state =
-        TopGamesManagerState(participants: dict.insert(
-          state.participants,
+        TopGamesManagerState(active_games: dict.insert(
+          state.active_games,
           game_id,
           game,
         ))

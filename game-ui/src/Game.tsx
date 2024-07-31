@@ -13,7 +13,7 @@ export interface IBoard {
 }
 
 function Game({ setErrMessage, gameToken, playerToken }: { setErrMessage: (err: ISnack | null) => void, gameToken: string, playerToken: string }) {
-  const { sendMessage, lastMessage, readyState, } = useWebSocket(getWebsocketUrl() + gameToken + '/' + playerToken);
+  const { sendMessage, lastMessage, readyState, } = useWebSocket(getWebsocketUrl() + gameToken + '/' + playerToken, undefined, Boolean(playerToken && gameToken));
 
   const [board, setBoard] = useState<IBoard | null>(null);
   const [activePlayer, setActivePlayer] = useState<string | null>(null);

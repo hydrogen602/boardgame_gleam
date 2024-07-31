@@ -53,14 +53,19 @@ pub fn main() {
                 process.new_selector()
                 |> process.selecting(ws_subject, fn(a) { a })
 
-              let assert Ok(color) =
+              let maybe_color =
                 actor.call(
                   games_manager,
                   manager.RegisterConn(game_token, player_token, ws_subject, _),
                   100,
                 )
 
-              #(#(color, ws_subject), Some(new_selector))
+              case maybe_color {
+                Ok(color) -> #(#(color, ws_subject), Some(new_selector))
+                Error(msg) -> {
+                  panic as msg
+                }
+              }
             },
             on_close: fn(_) {
               actor.send(
