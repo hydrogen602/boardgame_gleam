@@ -33,7 +33,6 @@ function Game({ setErrMessage, gameToken, playerToken }: { setErrMessage: (err: 
 
   useEffect(() => {
     if (lastMessage !== null) {
-      console.log(lastMessage);
       if (lastMessage.data.startsWith('board=')) {
         setBoard(parseBoard(lastMessage.data.slice(6)));
       }
