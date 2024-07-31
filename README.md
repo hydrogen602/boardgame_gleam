@@ -1,4 +1,5 @@
 # boardgame
+My attempt to learn gleam
 
 Features
 - Server can handle many games at once
