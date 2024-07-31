@@ -8,3 +8,13 @@ export function getWebsocketUrl() {
   }
   throw new Error('Unknown environment');
 }
+
+export function getApiUrl() {
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3000/';
+  }
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://lightsail.hydrogen602.com/';
+  }
+  throw new Error('Unknown environment');
+}

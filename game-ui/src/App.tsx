@@ -1,81 +1,117 @@
-import React, { useEffect, useState } from 'react';
-import useWebSocket, { ReadyState } from 'react-use-websocket';
+import { Box, Button, Card, Input, Snackbar, Typography } from "@mui/joy";
+import Game from "./Game";
+import { useLocalStorage } from "./util";
+import React, { useState } from "react";
 import ErrorIcon from '@mui/icons-material/Error';
+import { getApiUrl } from "./config";
 
-import Board from './Board';
-import { Box, Button, Snackbar, Stack, Typography } from '@mui/joy';
-import { getWebsocketUrl } from './config';
 
-export type Square = string | null;
 
-interface ISnack {
+export interface ISnack {
   message: string;
   severity: 'success' | 'danger';
 }
 
-export interface IBoard {
-  pieces: (Square | null)[][];
+function isValidToken(token: string): boolean {
+  // only hex characters
+  return /^[0-9a-fA-F]+$/.test(token);
 }
 
 function App() {
-  const { sendMessage, lastMessage, readyState } = useWebSocket(getWebsocketUrl());
-
-  const [board, setBoard] = useState<IBoard | null>(null);
-  const [activePlayer, setActivePlayer] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (readyState === ReadyState.OPEN) {
-      sendMessage('get_board');
-      sendMessage('get_player');
-    }
-    else if (readyState === ReadyState.CLOSED) {
-      setErrMessage({
-        message: 'Connection closed. Please refresh the page.',
-        severity: 'danger',
-      });
-    }
-  }, [readyState, sendMessage]);
-
-  useEffect(() => {
-    if (lastMessage !== null) {
-      console.log(lastMessage);
-      if (lastMessage.data.startsWith('board=')) {
-        setBoard(parseBoard(lastMessage.data.slice(6)));
-      }
-      else if (lastMessage.data.startsWith('player=')) {
-        setActivePlayer(lastMessage.data.slice(7));
-      }
-      else if (lastMessage.data.startsWith('error=')) {
-        setErrMessage({
-          message: lastMessage.data.slice(6),
-          severity: 'danger',
-        });
-      }
-      else if (lastMessage.data.startsWith('winner=')) {
-        setErrMessage({
-          message: `Winner: ${lastMessage.data.slice(7)}`,
-          severity: 'success',
-        });
-      }
-    }
-  }, [lastMessage]);
+  const [gameToken, setGameToken] = useLocalStorage<string | null>(null, "gameToken");
+  const [playerToken, setPlayerToken] = useLocalStorage<string | null>(null, "playerToken");
 
   const [errMessage, setErrMessage] = useState<ISnack | null>(null);
 
+  const [tmpGameToken, setTmpGameToken] = useState<string>('');
 
-  const [selectedPiece, setSelectedPiece] = useState<string | null>(null);
-  const clickHandler = (coord: string) => {
-    if (selectedPiece === null) {
-      setSelectedPiece(coord);
+  const joinHandler = async (color: 'white' | 'black') => {
+    try {
+      const resp = await fetch(getApiUrl() + `join_game/${color}/${gameToken}`);
+      const data = await resp.text();
+      if (resp.status !== 200) {
+        throw data;
+      }
+      if (!isValidToken(data)) {
+        throw new Error('Invalid token: ' + data);
+      }
+      setPlayerToken(data);
     }
-    else {
-      sendMessage(`move=move=${activePlayer},${selectedPiece},${coord}`.toLowerCase());
-      setSelectedPiece(null);
+    catch (e) {
+      setErrMessage({
+        message: 'Failed to join game: ' + e,
+        severity: 'danger',
+      });
     }
+  };
+
+  let inner: React.ReactElement | null = null;
+  if (gameToken === null) {
+    inner = (<>
+      <Card sx={{
+        padding: '1em',
+        marginBottom: '1em',
+      }}>
+        <Typography level='h1'>Start New Game</Typography>
+        <Button onClick={async () => {
+          try {
+            const resp = await fetch(getApiUrl() + 'get_code');
+            const data = await resp.text();
+            if (resp.status !== 200) {
+              throw data;
+            }
+            if (!isValidToken(data)) {
+              throw new Error('Invalid token: ' + data);
+            }
+            setGameToken(data);
+          }
+          catch (e) {
+            setErrMessage({
+              message: 'Failed to create game: ' + e,
+              severity: 'danger',
+            });
+          }
+        }}>Create Game</Button>
+      </Card >
+      <Card sx={{
+        padding: '1em',
+        marginBottom: '1em',
+      }}>
+        <Typography level='h1'>Join Existing Game</Typography>
+        <Input placeholder='Game Code' onChange={(e) => setTmpGameToken(e.target.value)} value={tmpGameToken} />
+        <Button onClick={() => setGameToken(tmpGameToken)
+        }>Apply Code</Button>
+      </Card>
+    </>
+    );
+  }
+  else if (playerToken === null) {
+    inner = (
+      <Card sx={{
+        gap: '1em',
+        padding: '2em',
+      }}>
+        <Typography level='h1'>Game Code: {gameToken}</Typography>
+        <Button onClick={() => joinHandler('white')
+        } variant="solid">Join Game as White</Button>
+        <Button onClick={() => joinHandler('black')
+        } variant="solid">Join Game as Black</Button>
+
+        <Button onClick={() => {
+          setGameToken(null);
+          setPlayerToken(null);
+        }} variant="soft" color="danger">
+          Exit Game
+        </Button>
+      </Card >
+    );
+  }
+  else {
+    inner = <Game setErrMessage={setErrMessage} gameToken={gameToken} playerToken={playerToken} />;
   }
 
   return (
-    <div className="App">
+    <>
       <Snackbar
         onClose={(event, reason) => {
           if (reason === 'clickaway' || reason === 'escapeKeyDown') {
@@ -92,8 +128,18 @@ function App() {
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
 
       >{errMessage?.message}</Snackbar>
+      <Button onClick={() => {
+        setGameToken(null);
+        setPlayerToken(null);
+      }} sx={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        zIndex: 1000,
+      }}>
+        Reset
+      </Button>
       <Box sx={{
-        padding: '0.5em',
         height: '100vh',
         width: '100vw',
         position: 'absolute',
@@ -105,36 +151,10 @@ function App() {
         alignItems: 'center',
         backgroundColor: 'lightgray',
       }}>
-        <Box sx={{
-          marginBottom: '1em',
-        }}>
-          <Stack direction="row" spacing={2}>
-            <Typography level="h3">
-              {activePlayer === null ? 'Loading player...' : 'Turn: ' + activePlayer}
-            </Typography>
-            <Button onClick={() => {
-              sendMessage(`move=place=${activePlayer}`.toLowerCase());
-            }}>Place pieces</Button>
-            {selectedPiece !== null && <Button onClick={() => setSelectedPiece(null)}>Cancel move from {selectedPiece.toUpperCase()}</Button>}
-          </Stack>
-        </Box>
-        {readyState === 0 ? <p>Connecting...</p> : board === null ? <p>Loading board...</p> : <Board board={board} clickHandler={clickHandler} />}
+        {inner}
       </Box>
-    </div>
+    </>
   );
 }
 
 export default App;
-
-function parseBoard(message: string): IBoard {
-  const convertOne = (rawPiece: string): Square => {
-    let piece = rawPiece.trim();
-    if (piece === 'null' || piece === '' || piece === '_') {
-      return null;
-    }
-    return piece;
-  }
-
-  const pieces = message.split('\n').map(row => row.split(' ').map(convertOne));
-  return { pieces };
-}

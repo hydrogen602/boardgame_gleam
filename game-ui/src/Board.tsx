@@ -1,5 +1,5 @@
 import { Box } from "@mui/joy";
-import { IBoard } from "./App";
+import { IBoard } from "./Game";
 
 
 

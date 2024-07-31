@@ -41,6 +41,10 @@ pub type TopGamesManagerMessage {
     WebsocketConnection,
     board.Color,
   )
+  CheckGameCode(
+    GameToken,
+    reply_to: process.Subject(Result(List(Color), String)),
+  )
 }
 
 pub type OneGame {
@@ -94,6 +98,21 @@ fn handle_message_top_manager(
   state: TopGamesManagerState,
 ) -> actor.Next(TopGamesManagerMessage, TopGamesManagerState) {
   case message {
+    CheckGameCode(game_id, reply_to) -> {
+      use game <- utils.result_actor(
+        reply_to,
+        state,
+        dict.get(state.participants, game_id)
+          |> result.map_error(fn(_) { "Game not found" }),
+      )
+
+      let players =
+        dict.to_list(game.players)
+        |> list.map(fn(x) { x.0 })
+
+      actor.send(reply_to, Ok(players))
+      actor.continue(state)
+    }
     AddGame(reply_to) -> {
       let game_id = token_gen_game()
 

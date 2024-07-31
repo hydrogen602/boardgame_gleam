@@ -1,7 +1,10 @@
+import cors_builder as cors
 import gleam/bytes_builder
 import gleam/erlang/process
+import gleam/http
 import gleam/http/request.{type Request}
 import gleam/http/response.{type Response}
+import gleam/list
 import gleam/option.{Some}
 import gleam/otp/actor
 import gleam/result
@@ -11,6 +14,23 @@ import mist.{type Connection, type ResponseData, type WebsocketConnection}
 import logic/board
 import manager.{new_top_games_manager}
 import player_message
+
+fn cors() {
+  cors.new()
+  |> cors.allow_origin("http://localhost:3000")
+  |> cors.allow_origin("http://localhost:3001")
+  |> cors.allow_method(http.Get)
+  |> cors.allow_method(http.Post)
+}
+
+// fn handler(req: wisp.Request) -> wisp.Response {
+//   use req <- cors.wisp_middleware(req, cors())
+//   wisp.ok()
+// }
+
+fn foo(handler) {
+  fn(a) { cors.mist_middleware(a, cors(), handler) }
+}
 
 pub fn main() {
   // These values are for the Websocket process initialized below - 
@@ -109,11 +129,40 @@ pub fn main() {
             }
           }
         }
+        ["check_code", game_tok] -> {
+          let result =
+            actor.call(
+              games_manager,
+              manager.CheckGameCode(manager.GameToken(game_tok), _),
+              100,
+            )
+
+          case result {
+            Ok(players_already) -> {
+              let players =
+                players_already
+                |> list.map(board.color_to_string)
+                |> string.join(",")
+
+              response.new(200)
+              |> response.set_body(
+                mist.Bytes(bytes_builder.from_string(players)),
+              )
+              |> response.set_header("content-type", "text/plain")
+            }
+            Error(err) -> {
+              response.new(404)
+              |> response.set_body(mist.Bytes(bytes_builder.from_string(err)))
+              |> response.set_header("content-type", "text/plain")
+            }
+          }
+        }
         ["echo"] -> echo_body(req)
         [] -> index(req)
         any -> not_found(req, any)
       }
     }
+    |> foo
     |> mist.new
     |> mist.port(3000)
     |> mist.start_http
