@@ -49,3 +49,7 @@ fn from_string_move(s: String) -> Result(action.ActionType, String) {
     _ -> Error("Unknown move")
   }
 }
+
+pub type CustomWebsocketMessage {
+  SockEchoOut(String)
+}

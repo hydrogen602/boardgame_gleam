@@ -34,7 +34,6 @@ fn foo(handler) {
 
 pub fn main() {
   // These values are for the Websocket process initialized below - 
-  let selector = process.new_selector()
   // let state = board.Game(board.starting_board, board.White)
 
   let games_manager = new_top_games_manager()
@@ -48,14 +47,20 @@ pub fn main() {
 
           mist.websocket(
             request: req,
-            on_init: fn(conn) {
+            on_init: fn(_) {
+              let ws_subject = process.new_subject()
+              let new_selector =
+                process.new_selector()
+                |> process.selecting(ws_subject, fn(a) { a })
+
               let assert Ok(color) =
                 actor.call(
                   games_manager,
-                  manager.RegisterConn(game_token, player_token, conn, _),
+                  manager.RegisterConn(game_token, player_token, ws_subject, _),
                   100,
                 )
-              #(color, Some(selector))
+
+              #(#(color, ws_subject), Some(new_selector))
             },
             on_close: fn(_) {
               actor.send(
@@ -171,9 +176,9 @@ pub fn main() {
 }
 
 fn handle_ws_message(
-  state: board.Color,
+  state: #(board.Color, process.Subject(player_message.CustomWebsocketMessage)),
   conn: WebsocketConnection,
-  message,
+  message: mist.WebsocketMessage(player_message.CustomWebsocketMessage),
   games_manager: process.Subject(manager.TopGamesManagerMessage),
   game_token: manager.GameToken,
   player_token: manager.PlayerToken,
@@ -188,7 +193,13 @@ fn handle_ws_message(
         Ok(msg) -> {
           actor.send(
             games_manager,
-            manager.PlayerMakesMove(msg, game_token, player_token, conn, state),
+            manager.PlayerMakesMove(
+              msg,
+              game_token,
+              player_token,
+              state.1,
+              state.0,
+            ),
           )
           actor.continue(state)
         }
@@ -198,7 +209,8 @@ fn handle_ws_message(
         }
       }
     }
-    mist.Custom(_) -> {
+    mist.Custom(player_message.SockEchoOut(msg)) -> {
+      let assert Ok(_) = mist.send_text_frame(conn, msg)
       actor.continue(state)
     }
     mist.Binary(_) -> {

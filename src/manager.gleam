@@ -10,7 +10,6 @@ import gleam/otp/actor
 import gleam/result
 import gleam/string
 import logic/action
-import mist.{type WebsocketConnection}
 import player_message
 import utils
 
@@ -30,7 +29,7 @@ pub type TopGamesManagerMessage {
   RegisterConn(
     GameToken,
     PlayerToken,
-    WebsocketConnection,
+    process.Subject(player_message.CustomWebsocketMessage),
     reply_to: process.Subject(Result(Color, String)),
   )
   Disconnect(GameToken, PlayerToken)
@@ -38,7 +37,7 @@ pub type TopGamesManagerMessage {
     player_message.PlayerMessage,
     GameToken,
     PlayerToken,
-    WebsocketConnection,
+    process.Subject(player_message.CustomWebsocketMessage),
     board.Color,
   )
   CheckGameCode(
@@ -50,7 +49,13 @@ pub type TopGamesManagerMessage {
 pub type OneGame {
   OneGame(
     board: Game,
-    players: Dict(Color, #(Option(WebsocketConnection), PlayerToken)),
+    players: Dict(
+      Color,
+      #(
+        Option(process.Subject(player_message.CustomWebsocketMessage)),
+        PlayerToken,
+      ),
+    ),
     last_activity: Time,
   )
 }
@@ -300,18 +305,20 @@ fn handler2(
   color: board.Color,
   conn,
   message: player_message.PlayerMessage,
-  all_cons: List(WebsocketConnection),
+  all_cons: List(process.Subject(player_message.CustomWebsocketMessage)),
 ) -> Game {
   case message {
     player_message.Reset -> {
-      let assert Ok(_) = mist.send_text_frame(conn, "resetting")
+      actor.send(conn, player_message.SockEchoOut("resetting"))
       let new_state = board.Game(board.starting_board, board.White)
       broadcast_new_state(all_cons, new_state)
       new_state
     }
     player_message.GetBoard -> {
-      let assert Ok(_) =
-        mist.send_text_frame(conn, "board=" <> board.to_string(game.board))
+      actor.send(
+        conn,
+        player_message.SockEchoOut("board=" <> board.to_string(game.board)),
+      )
       game
     }
     player_message.GetPlayer -> {
@@ -323,23 +330,24 @@ fn handler2(
           "winner=" <> board.color_to_string(winner)
         }
       }
-      let assert Ok(_) = mist.send_text_frame(conn, msg)
+      actor.send(conn, player_message.SockEchoOut(msg))
       game
     }
     player_message.Move(action) -> {
       let result = action.move(game, action, color)
       case result {
         Ok(new_state) -> {
-          let assert Ok(_) = mist.send_text_frame(conn, "move")
+          actor.send(conn, player_message.SockEchoOut("move"))
           broadcast_new_state(all_cons, new_state)
           new_state
         }
         Error(err) -> {
-          let assert Ok(_) =
-            mist.send_text_frame(
-              conn,
+          actor.send(
+            conn,
+            player_message.SockEchoOut(
               "error=" <> action.action_error_to_string(err),
-            )
+            ),
+          )
           game
         }
       }
@@ -347,19 +355,28 @@ fn handler2(
   }
 }
 
-fn broadcast_new_state(conns: List(WebsocketConnection), new_state: Game) {
+fn broadcast_new_state(
+  conns: List(process.Subject(player_message.CustomWebsocketMessage)),
+  new_state: Game,
+) {
   let one = fn(conn) {
-    let assert Ok(_) =
-      mist.send_text_frame(conn, "board=" <> board.to_string(new_state.board))
+    actor.send(
+      conn,
+      player_message.SockEchoOut("board=" <> board.to_string(new_state.board)),
+    )
 
     case new_state {
       board.GameWon(_, winner) -> {
-        let assert Ok(_) =
-          mist.send_text_frame(conn, "winner=" <> board.color_to_string(winner))
+        actor.send(
+          conn,
+          player_message.SockEchoOut("winner=" <> board.color_to_string(winner)),
+        )
       }
       board.Game(_, player) -> {
-        let assert Ok(_) =
-          mist.send_text_frame(conn, "player=" <> board.color_to_string(player))
+        actor.send(
+          conn,
+          player_message.SockEchoOut("player=" <> board.color_to_string(player)),
+        )
       }
     }
   }
